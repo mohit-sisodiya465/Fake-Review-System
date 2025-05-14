@@ -1,0 +1,33 @@
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+import csv
+
+# Function to save reviews to a CSV file
+def save_reviews_to_csv(reviews, filename="reviews_japanese.csv"):
+    with open(filename, mode="a", newline="", encoding="utf-8") as file:
+        writer = csv.writer(file)
+        # Write the header row
+        writer.writerow(["Review Number", "Review Text"])
+        # Write each review to the CSV file
+        for index, review in enumerate(reviews, start=1):
+            writer.writerow([index, review])
+
+# Initialize the Chrome driver
+driver = webdriver.Chrome()
+
+# Define the query and URL
+#query = "reviews"
+driver.get(f"https://filmarks.com/movies/100069?page=7")
+
+# Find all review elements
+elems = driver.find_elements(By.CLASS_NAME, "p-mark__review")
+print(f"{len(elems)} items found")
+
+# Extract review texts
+reviews = [elem.text for elem in elems]
+
+# Save reviews to a CSV file
+save_reviews_to_csv(reviews)
+
+# Close the driver
+driver.close()

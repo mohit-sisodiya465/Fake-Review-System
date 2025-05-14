@@ -1,0 +1,35 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Define the model names for comparison
+models = ['Our Model', 'Model A', 'Model B', 'Model C', 'Model D']
+
+# Hypothetical performance metrics for each model
+accuracy = [0.75, 0.84, 0.86, 0.83, 0.85]
+f1_score = [0.77, 0.82, 0.84, 0.81, 0.83]
+
+# Create line graphs for accuracy and F1-score
+x = np.arange(len(models))
+
+fig, ax = plt.subplots(2, 1, figsize=(12, 10), sharex=True)
+
+# Plot Accuracy
+ax[0].plot(x, accuracy, marker='o', linestyle='-', color='blue', label='Accuracy')
+ax[0].set_title('Accuracy Comparison with Previous Research', fontsize=14, fontweight='bold')
+ax[0].set_ylabel('Accuracy')
+ax[0].set_ylim(0.75, 1.0)
+ax[0].grid(True)
+ax[0].legend()
+
+# Plot F1-score
+ax[1].plot(x, f1_score, marker='s', linestyle='--', color='green', label='F1-score')
+ax[1].set_title('F1-score Comparison with Previous Research', fontsize=14, fontweight='bold')
+ax[1].set_ylabel('F1-score')
+ax[1].set_ylim(0.75, 1.0)
+ax[1].set_xticks(x)
+ax[1].set_xticklabels(models, rotation=30, ha='right')
+ax[1].grid(True)
+ax[1].legend()
+
+plt.tight_layout()
+plt.show()

@@ -1,0 +1,80 @@
+import pandas as pd
+import re
+import string
+from langdetect import detect
+from googletrans import Translator
+from transformers import pipeline
+import asyncio
+import joblib  # for loading pre-trained model/vectorizer
+
+# ----------- Load Pretrained Model and Vectorizer -----------
+model = joblib.load("ai_human_model.pkl")        # your trained LogisticRegression model
+vectorizer = joblib.load("tfidf_vectorizer.pkl")  # your trained TfidfVectorizer
+
+# ----------- Preprocessing Function -----------
+def clean_text(text):
+    text = str(text).lower()
+    text = re.sub(r'\[.*?\]', '', text)
+    text = re.sub(r'https?://\S+|www\.\S+', '', text)
+    text = re.sub(r'<.*?>+', '', text)
+    text = re.sub(r'[%s]' % re.escape(string.punctuation), '', text)
+    text = re.sub(r'\n', '', text)
+    text = re.sub(r'\w*\d\w*', '', text)
+    return text.strip()
+
+# ----------- Text Origin Prediction -----------
+def predict_text_origin(text):
+    cleaned = clean_text(text)
+    vec = vectorizer.transform([cleaned])
+    prediction = model.predict(vec)
+    return "AI" if prediction[0] == 1 else "Human"
+
+# ----------- Language Detection & Translation -----------
+translator = Translator()
+sentiment_analyzer = pipeline("sentiment-analysis", model="allenai/longformer-base-4096")
+
+def detect_language(text):
+    try:
+        return detect(text)
+    except:
+        return "unknown"
+
+async def translate_to_english(text, source_language):
+    try:
+        if source_language != "en":
+            translated = translator.translate(text, src=source_language, dest="en")
+            return translated.text
+        return text
+    except Exception as e:
+        print(f"Translation Error: {e}")
+        return text
+
+def analyze_sentiment(text):
+    try:
+        result = sentiment_analyzer(text)
+        return result[0]['label'], result[0]['score']
+    except Exception as e:
+        print(f"Sentiment Analysis Error: {e}")
+        return "Neutral", 0.0
+
+# ----------- Review Processing Pipeline -----------
+async def process_review(review):
+    detected_lang = detect_language(review)
+    translated_text = await translate_to_english(review, detected_lang)
+    sentiment, confidence = analyze_sentiment(translated_text)
+    author_type = predict_text_origin(translated_text)
+    
+    return review, detected_lang, translated_text, sentiment, confidence, author_type
+
+async def process_large_dataset(input_file, output_file, num_workers=4):
+    df = pd.read_csv(input_file)
+    tasks = [process_review(review) for review in df['review'].tolist()]
+    results = await asyncio.gather(*tasks)
+
+    df_processed = pd.DataFrame(results, columns=["original_text", "language", "translated_text", "sentiment", "confidence", "author_type"])
+    df_processed.to_csv(output_file, index=False)
+    print(f"Processing completed! Results saved to {output_file}")
+
+# ----------- Run Pipeline -----------
+if __name__ == "__main__":
+    asyncio.run(process_large_dataset("total_reviews.csv", "processed_reviews.csv"))

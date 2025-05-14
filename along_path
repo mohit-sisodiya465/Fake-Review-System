@@ -1,0 +1,78 @@
+import pandas as pd
+import re
+import string
+from sklearn.model_selection import train_test_split
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import classification_report, accuracy_score
+import joblib
+import os
+
+# ---------- STEP 1: Load Dataset ----------
+file_path = "accuracy.csv"  # Make sure this file is in the same folder
+df = pd.read_csv(file_path)
+
+# ---------- STEP 2: Clean Text ----------
+def clean_text(text):
+    text = str(text).lower()
+    text = re.sub(r'\[.*?\]', '', text)
+    text = re.sub(r'https?://\S+|www\.\S+', '', text)
+    text = re.sub(r'<.*?>+', '', text)
+    text = re.sub(r'[%s]' % re.escape(string.punctuation), '', text)
+    text = re.sub(r'\n', '', text)
+    text = re.sub(r'\w*\d\w*', '', text)
+    return text.strip()
+
+df['clean_text'] = df['review'].apply(clean_text)
+
+# ---------- STEP 3: Feature Extraction ----------
+vectorizer = TfidfVectorizer(max_features=5000)
+X = vectorizer.fit_transform(df['clean_text'])
+
+# Encode labels: 1 = AI, 0 = Human
+y = df['label'].apply(lambda x: 1 if x.lower() == 'ai' else 0)
+
+# ---------- STEP 4: Train/Test Split ----------
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# ---------- STEP 5: Train Model ----------
+model = LogisticRegression()
+model.fit(X_train, y_train)
+
+# ---------- STEP 6: Evaluate ----------
+y_pred = model.predict(X_test)
+print("Classification Report:\n", classification_report(y_test, y_pred))
+print("Accuracy:", accuracy_score(y_test, y_pred))
+
+# ---------- STEP 7: Save Model and Vectorizer ----------
+# Save the model and vectorizer to files
+model_path = 'ai_human_model.pkl'
+vectorizer_path = 'tfidf_vectorizer.pkl'
+
+joblib.dump(model, model_path)
+joblib.dump(vectorizer, vectorizer_path)
+
+print(f"Model saved at: {os.path.abspath(model_path)}")
+print(f"Vectorizer saved at: {os.path.abspath(vectorizer_path)}")
+
+# ---------- STEP 8: Prediction Function ----------
+def predict_text_origin(text, model_path=model_path, vectorizer_path=vectorizer_path):
+    # Load model and vectorizer from saved files
+    model = joblib.load(model_path)
+    vectorizer = joblib.load(vectorizer_path)
+    
+    # Clean and transform input text
+    cleaned = clean_text(text)
+    vec = vectorizer.transform([cleaned])
+    
+    # Make prediction
+    prediction = model.predict(vec)
+    return "AI" if prediction[0] == 1 else "Human"
+
+# ---------- STEP 9: Example Usage ----------
+while True:
+    user_input = input("\nEnter text to check (or type 'exit' to quit):\n> ")
+    if user_input.lower() == 'exit':
+        break
+    result = predict_text_origin(user_input)
+    print(f"Prediction: {result}")

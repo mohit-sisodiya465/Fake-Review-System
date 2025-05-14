@@ -1,0 +1,114 @@
+import pandas as pd
+from langdetect import detect, LangDetectException
+from googletrans import Translator
+from transformers import pipeline
+import asyncio
+from tqdm import tqdm  # For progress tracking
+import logging
+import torch
+from transformers import BertTokenizer, BertModel
+import joblib
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+
+# Initialize Translator and Sentiment Analyzer
+translator = Translator()
+sentiment_analyzer = pipeline("sentiment-analysis", model="allenai/longformer-base-4096")
+
+# Load the pre-trained human/AI classifier
+human_ai_classifier = joblib.load("human_ai_classifier.pkl")  # Replace with your model path
+
+# Load BERT tokenizer and model for feature extraction
+tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+bert_model = BertModel.from_pretrained("bert-base-uncased")
+
+def detect_language(text):
+    """Detect the language of the input text."""
+    try:
+        return detect(text)
+    except LangDetectException:
+        return "unknown"
+
+async def translate_to_english(text, source_language):
+    """Translate text to English if needed."""
+    try:
+        if source_language != "en":
+            translated = translator.translate(text, src=source_language, dest="en")
+            return translated.text
+        return text  # Already in English
+    except Exception as e:
+        logging.error(f"Translation Error for text '{text}': {e}")
+        return text
+
+def analyze_sentiment(text):
+    """Analyze sentiment using the loaded model."""
+    try:
+        result = sentiment_analyzer(text)
+        return result[0]['label'], result[0]['score']
+    except Exception as e:
+        logging.error(f"Sentiment Analysis Error for text '{text}': {e}")
+        return "Neutral", 0.0
+
+def get_bert_embeddings(texts, max_length=128):
+    """Extract BERT embeddings for text."""
+    inputs = tokenizer(texts, return_tensors="pt", padding=True, truncation=True, max_length=max_length)
+    with torch.no_grad():
+        outputs = bert_model(**inputs)
+    return outputs.last_hidden_state.mean(dim=1).numpy()
+
+def guess_human_or_ai(text):
+    """Predict whether the review is human-written or AI-generated using the trained classifier."""
+    try:
+        # Extract BERT embeddings for the text
+        embeddings = get_bert_embeddings([text])
+        # Predict using the trained classifier
+        prediction = human_ai_classifier.predict(embeddings)
+        return prediction[0]  # Return the predicted label (human or ai)
+    except Exception as e:
+        logging.error(f"Human/AI Prediction Error for text '{text}': {e}")
+        return "unknown"
+
+async def process_review(review):
+    """Process a review: detect language, translate, analyze sentiment, and guess human/AI."""
+    detected_lang = detect_language(review)
+    translated_text = await translate_to_english(review, detected_lang)
+    sentiment, confidence = analyze_sentiment(translated_text)
+    author_type = guess_human_or_ai(translated_text)
+    
+    return review, detected_lang, translated_text, sentiment, confidence, author_type
+
+async def process_batch(reviews):
+    """Process a batch of reviews concurrently."""
+    tasks = [process_review(review) for review in reviews]
+    return await asyncio.gather(*tasks)
+
+async def process_large_dataset(input_file, output_file, batch_size=100):
+    """Process large dataset in batches and save results to CSV."""
+    df = pd.read_csv(input_file)  # Load dataset (Assuming it has a column 'review')
+    reviews = df['review'].tolist()
+    total_reviews = len(reviews)
+    results = []
+
+    # Process reviews in batches
+    for i in tqdm(range(0, total_reviews, batch_size), desc="Processing Reviews"):
+        batch = reviews[i:i + batch_size]
+        batch_results = await process_batch(batch)
+        results.extend(batch_results)
+
+    # Convert results to DataFrame
+    df_processed = pd.DataFrame(
+        results,
+        columns=["original_text", "language", "translated_text", "sentiment", "confidence", "author_type"]
+    )
+
+    # Save to CSV
+    df_processed.to_csv(output_file, index=False)
+    logging.info(f"Processing completed! Results saved to {output_file}")
+
+# Example Usage
+if __name__ == "__main__":
+    input_file = "total_reviews.csv"  # Replace with your input file
+    output_file = "processed_reviews.csv"  # Replace with your output file
+    asyncio.run(process_large_dataset(input_file, output_file, batch_size=100))
+    

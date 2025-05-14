@@ -1,0 +1,67 @@
+import tkinter as tk
+from tkinter import messagebox
+import pandas as pd
+import re
+import string
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.linear_model import LogisticRegression
+
+# ---------- Load and Prepare Model ----------
+# Load the dataset
+df = pd.read_csv("accuracy.csv")
+
+# Clean text function
+def clean_text(text):
+    text = str(text).lower()
+    text = re.sub(r'\[.*?\]', '', text)
+    text = re.sub(r'https?://\S+|www\.\S+', '', text)
+    text = re.sub(r'<.*?>+', '', text)
+    text = re.sub(r'[%s]' % re.escape(string.punctuation), '', text)
+    text = re.sub(r'\n', '', text)
+    text = re.sub(r'\w*\d\w*', '', text)
+    return text.strip()
+
+# Apply cleaning
+df['clean_text'] = df['review'].apply(clean_text)
+
+# Vectorize
+vectorizer = TfidfVectorizer(max_features=5000)
+X = vectorizer.fit_transform(df['clean_text'])
+y = df['label'].apply(lambda x: 1 if x.lower() == 'ai' else 0)
+
+# Train model
+model = LogisticRegression()
+model.fit(X, y)
+
+# Prediction function
+def predict_text_origin(text):
+    cleaned = clean_text(text)
+    vec = vectorizer.transform([cleaned])
+    prediction = model.predict(vec)
+    return "human" if prediction[0] == 1 else "ai"
+
+# ---------- Tkinter GUI ----------
+def check_text():
+    user_input = text_input.get("1.0", tk.END).strip()
+    if not user_input:
+        messagebox.showwarning("Input Error", "Please enter some text.")
+        return
+    result = predict_text_origin(user_input)
+    result_label.config(text=f"Prediction: {result}", fg="blue")
+
+# GUI setup
+root = tk.Tk()
+root.title("Human or AI Text Detector")
+root.geometry("600x450")
+
+tk.Label(root, text="Enter your text below:", font=("Arial", 12)).pack(pady=10)
+
+text_input = tk.Text(root, height=10, width=70, wrap="word")
+text_input.pack(padx=10)
+
+tk.Button(root, text="Check Text", command=check_text, bg="green", fg="white", font=("Arial", 12)).pack(pady=10)
+
+result_label = tk.Label(root, text="", font=("Arial", 14))
+result_label.pack(pady=20)
+
+root.mainloop()

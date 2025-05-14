@@ -1,0 +1,62 @@
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+import time
+import csv
+# Initialize the Chrome driver
+driver = webdriver.Chrome()
+
+# Open the IMDb reviews page
+query = 'reviews'
+driver.get(f"https://www.imdb.com/title/tt0944947/{query}/?ref_=tt_ov_ql_2")
+
+# Wait for the page to load
+time.sleep(10)
+
+# Function to click the "Load More" button until it disappears
+def load_all_reviews():
+    while True:
+        try:
+            # Locate the "Load More" button
+            load_more_button = driver.find_element(
+                By.CSS_SELECTOR, ".ipc-btn--core-base.ipc-btn--theme-base.ipc-btn--button-radius.ipc-btn--on-accent2.ipc-text-button.ipc-see-more__button"
+            )
+            # Scroll the button into view and click it
+            driver.execute_script("arguments[0].scrollIntoView();", load_more_button)
+            load_more_button.click()
+            # Wait for new reviews to load
+            time.sleep(2)
+        except:
+            # If the button is not found, exit the loop
+            print("No more 'Load More' button found.")
+            break
+
+# Call the function to load all reviews
+load_all_reviews()
+
+# Find all review elements
+reviews = driver.find_elements(By.CLASS_NAME, "ipc-html-content-inner-div")  # Correct class name for review text
+
+# Print the number of reviews found
+print(f"{len(reviews)} reviews found")
+
+# Save reviews to a CSV file
+with open("imdb_reviews.csv", "w", newline="", encoding="utf-8") as csvfile:
+    # Create a CSV writer object
+    csv_writer = csv.writer(csvfile)
+    
+    # Write the header row
+    csv_writer.writerow(["Review Number", "Review Text"])
+    
+    # Write each review to the CSV file
+    for i, review in enumerate(reviews, 1):
+        csv_writer.writerow([i, review.text])
+
+# Close the driver
+time.sleep(40)
+driver.close()
+#https://www.allocine.fr/series/ficheserie-7157/critiques/
+#https://www.sensacine.com/series/serie-7157/criticas/
+#https://filmarks.com/movies/100069

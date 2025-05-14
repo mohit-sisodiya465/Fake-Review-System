@@ -1,0 +1,72 @@
+import pandas as pd
+from langdetect import detect
+from googletrans import Translator
+from transformers import pipeline
+import multiprocessing
+
+# Initialize Translator and Sentiment Analyzer
+translator = Translator()
+sentiment_analyzer = pipeline("sentiment-analysis")
+
+def detect_language(text):
+    """Detect the language of the input text."""
+    try:
+        return detect(text)
+    except:
+        return "unknown"
+
+def translate_to_english(text, source_language):
+    """Translate text to English if needed."""
+    try:
+        if source_language != "en":
+            translated = translator.translate(text, src=source_language, dest="en")
+            return translated.text
+        return text  # Already in English
+    except Exception as e:
+        print(f"Translation Error: {e}")
+        return text
+
+def analyze_sentiment(text):
+    """Analyze sentiment of the text."""
+    try:
+        result = sentiment_analyzer(text)
+        return result[0]['label'], result[0]['score']
+    except Exception as e:
+        print(f"Sentiment Analysis Error: {e}")
+        return "Neutral", 0.0
+
+def guess_human_or_ai(text):
+    """Guess whether the review is human-written or AI-written."""
+    # Placeholder function: Implement your own logic here
+    # For example, you could use a pre-trained model or heuristic
+    # Here, we'll just return a random guess for demonstration purposes
+    import random
+    return random.choice(["human", "ai"])
+
+def process_review(review):
+    """Process a review: detect language, translate, analyze sentiment, and guess human/AI."""
+    detected_lang = detect_language(review)
+    translated_text = translate_to_english(review, detected_lang)
+    sentiment, confidence = analyze_sentiment(translated_text)
+    author_type = guess_human_or_ai(translated_text)
+    
+    return review, detected_lang, translated_text, sentiment, confidence, author_type
+
+def process_large_dataset(input_file, output_file, num_workers=4):
+    """Process large dataset using multiprocessing and save results to CSV."""
+    df = pd.read_csv(input_file)  # Load dataset (Assuming it has a column 'review')
+
+    # Use multiprocessing for faster execution
+    with multiprocessing.Pool(num_workers) as pool:
+        results = pool.map(process_review, df['review'].tolist())
+
+    # Convert results to DataFrame
+    df_processed = pd.DataFrame(results, columns=["original_text", "language", "translated_text", "sentiment", "confidence", "author_type"])
+
+    # Save to CSV
+    df_processed.to_csv(output_file, index=False)
+    print(f"Processing completed! Results saved to {output_file}")
+
+# Example Usage
+if __name__ == "__main__":
+    process_large_dataset("total_reviews_csv.csv", "processed_reviews.csv", num_workers=4)
